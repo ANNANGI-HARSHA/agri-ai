@@ -1,0 +1,9 @@
+Flask
+numpy
+scikit-learn
+scipy
+pillow
+python-dotenv
+requests
+opencv-python  # optional, drone analysis falls back if missing
+tensorflow  # optional, ResNet50 model if environment supports it

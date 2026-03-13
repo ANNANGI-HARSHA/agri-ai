@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crop Monitoring – Precision Agriculture AI Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-success shadow-sm">
+    <div class="container">
+      <a class="navbar-brand fw-bold" href="/">Precision Agriculture AI Dashboard</a>
+      <button id="theme-toggle" class="btn btn-sm btn-outline-light ms-2" type="button">🌙 Dark</button>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsMain">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarsMain">
+        <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link" href="/">Home</a></li>
+          <li class="nav-item"><a class="nav-link" href="/crop-recommendation">Crop Recommendation</a></li>
+          <li class="nav-item"><a class="nav-link" href="/disease-detection">Disease Detection</a></li>
+          <li class="nav-item"><a class="nav-link" href="/yield-dashboard">Yield Monitoring</a></li>
+          <li class="nav-item"><a class="nav-link active" href="/crop-monitoring">Crop Monitoring</a></li>
+          <li class="nav-item"><a class="nav-link" href="/drone-monitoring">Drone Monitoring</a></li>
+          <li class="nav-item"><a class="nav-link" href="/about">About</a></li>
+          {% if farmer %}
+          <li class="nav-item"><a class="nav-link" href="/profile">{{ farmer.name }}</a></li>
+          <li class="nav-item"><a class="nav-link" href="/logout">Logout</a></li>
+          {% else %}
+          <li class="nav-item"><a class="nav-link" href="/login">Login</a></li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <section class="py-5">
+    <div class="container-xl">
+      <!-- Page Header -->
+      <div class="text-center mb-4">
+        <h1 class="page-title mb-2">📊 Crop Price & Production Monitor</h1>
+        <p class="page-subtitle mb-0">Analyze yearly & monthly crop production trends, market prices, forecasts, and
+          state-wise rankings using real agricultural datasets.</p>
+      </div>
+
+      <!-- ===== FILTER BAR ===== -->
+      <div class="card-3d bg-white p-4 mb-4">
+        <h5 style="color:#fbbf24; font-weight:700;" class="mb-3">🔍 Select Filters</h5>
+        <div id="monitor-status" class="alert alert-warning d-none mb-3" role="alert"></div>
+        <div class="row g-3 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label fw-bold">Crop (Production)</label>
+            <select id="filter-crop" class="form-select">
+              {% for c in filters.production_crops %}
+              <option value="{{ c }}" {% if c=='Rice' %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">State</label>
+            <select id="filter-state" class="form-select">
+              <option value="">All States</option>
+              {% for s in filters.states %}
+              <option value="{{ s }}">{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">Market Commodity</label>
+            <select id="filter-commodity" class="form-select">
+              <option value="">All Commodities</option>
+              {% for c in filters.price_crops %}
+              <option value="{{ c }}">{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <button id="monitor-btn" type="button" class="detect-btn w-100">
+              <span id="monitor-btn-text">📈 Analyze</span>
+              <span id="monitor-btn-spinner" class="d-none">
+                <span class="spinner-border spinner-border-sm me-2"></span> Loading…
+              </span>
+            </button>
+          </div>
+        </div>
+        <!-- Compare bar -->
+        <div class="row g-3 mt-2">
+          <div class="col-md-9">
+            <label class="form-label fw-bold">Compare Crops (comma-separated)</label>
+            <input type="text" id="compare-crops" class="form-control" placeholder="e.g. Rice, Wheat, Maize, Sugarcane"
+              value="Rice, Wheat, Maize">
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <button id="compare-btn" type="button" class="detect-btn w-100">🔄 Compare</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4 mb-4">
+        <div class="col-12">
+          <div class="card-3d bg-white p-4">
+            <h5 style="color:#8b5cf6; font-weight:700;">🧪 Soil Dataset Snapshot</h5>
+            <p class="mb-3" style="font-size:0.85rem;">Derived from the pincode-wise soil dataset for the selected state.</p>
+            <div id="soil-profile" class="row g-3">
+              <div class="col-md-3">
+                <div class="p-3 rounded-3" style="background:rgba(139,92,246,0.08);">
+                  <div style="font-size:0.8rem; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Avg pH</div>
+                  <div id="soil-avg-ph" style="font-size:1.5rem; font-weight:800; color:#8b5cf6;">—</div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="p-3 rounded-3" style="background:rgba(34,197,94,0.08);">
+                  <div style="font-size:0.8rem; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Avg Nitrogen</div>
+                  <div id="soil-avg-n" style="font-size:1.5rem; font-weight:800; color:#22c55e;">—</div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="p-3 rounded-3" style="background:rgba(59,130,246,0.08);">
+                  <div style="font-size:0.8rem; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Avg Phosphorus</div>
+                  <div id="soil-avg-p" style="font-size:1.5rem; font-weight:800; color:#3b82f6;">—</div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="p-3 rounded-3" style="background:rgba(251,191,36,0.12);">
+                  <div style="font-size:0.8rem; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Avg Potassium</div>
+                  <div id="soil-avg-k" style="font-size:1.5rem; font-weight:800; color:#f59e0b;">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="mt-3">
+              <div style="font-size:0.8rem; text-transform:uppercase; font-weight:700; margin-bottom:8px;">Dominant Soil Types</div>
+              <div id="soil-top-types" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SUMMARY CARDS ROW ===== -->
+      <div id="summary-cards" class="row g-3 mb-4 d-none">
+        <div class="col-6 col-lg-3">
+          <div class="card-3d bg-white p-3 text-center">
+            <div style="font-size:0.8rem; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Production Trend</div>
+            <div id="sum-trend" style="font-size:1.6rem; font-weight:800; color:#22c55e;">—</div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-3">
+          <div class="card-3d bg-white p-3 text-center">
+            <div style="font-size:0.8rem; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Avg Production</div>
+            <div id="sum-avg-prod" style="font-size:1.6rem; font-weight:800; color:#3b82f6;">—</div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-3">
+          <div class="card-3d bg-white p-3 text-center">
+            <div style="font-size:0.8rem; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Market Price Trend</div>
+            <div id="sum-price-trend" style="font-size:1.6rem; font-weight:800; color:#fbbf24;">—</div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-3">
+          <div class="card-3d bg-white p-3 text-center">
+            <div style="font-size:0.8rem; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Modal Price Avg</div>
+            <div id="sum-avg-price" style="font-size:1.6rem; font-weight:800; color:#ef4444;">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== CHARTS ROW 1: Production ===== -->
+      <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+          <div class="card-3d bg-white p-4">
+            <h5 style="color:#60a5fa; font-weight:700;">📈 Yearly Production Trend</h5>
+            <p class="mb-3" style="font-size:0.85rem;">Historical area &amp; production by year with linear forecast</p>
+            <div style="position:relative; height:360px;">
+              <canvas id="chart-production"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card-3d bg-white p-4 h-100">
+            <h5 style="color:#22c55e; font-weight:700;">🔮 Production Forecast</h5>
+            <p class="mb-3" style="font-size:0.85rem;">Next 5-year prediction based on trend</p>
+            <div id="forecast-production" style="font-size:0.95rem;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== CHARTS ROW 2: Market Prices ===== -->
+      <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+          <div class="card-3d bg-white p-4">
+            <h5 style="color:#fbbf24; font-weight:700;">💰 Market Price Trend (Daily)</h5>
+            <p class="mb-3" style="font-size:0.85rem;">APMC market prices – Min, Max &amp; Modal rates</p>
+            <div style="position:relative; height:360px;">
+              <canvas id="chart-prices"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card-3d bg-white p-4 h-100">
+            <h5 style="color:#ef4444; font-weight:700;">📊 Price Forecast</h5>
+            <p class="mb-3" style="font-size:0.85rem;">Predicted modal price for upcoming periods</p>
+            <div id="forecast-price" style="font-size:0.95rem;"></div>
+            <hr class="my-3" style="border-color:rgba(148,163,184,0.3);">
+            <h6 style="font-weight:700; color:#60a5fa;">Monthly Averages</h6>
+            <div id="monthly-prices" style="font-size:0.9rem;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ROW 3: Season + State Ranking ===== -->
+      <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+          <div class="card-3d bg-white p-4">
+            <h5 style="color:#8b5cf6; font-weight:700;">🌦️ Season-wise Production Breakdown</h5>
+            <div style="position:relative; height:320px;">
+              <canvas id="chart-seasons"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card-3d bg-white p-4">
+            <h5 style="color:#22c55e; font-weight:700;">🏆 State-wise Production Ranking</h5>
+            <div id="state-ranking" style="max-height:340px; overflow-y:auto; font-size:0.95rem;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ROW 4: Crop Comparison ===== -->
+      <div class="row g-4 mb-4">
+        <div class="col-12">
+          <div class="card-3d bg-white p-4">
+            <h5 style="color:#3b82f6; font-weight:700;">🔄 Crop Comparison</h5>
+            <div style="position:relative; height:360px;">
+              <canvas id="chart-compare"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Productivity chart -->
+      <div class="row g-4 mb-4">
+        <div class="col-12">
+          <div class="card-3d bg-white p-4">
+            <h5 style="color:#ef4444; font-weight:700;">⚡ Yearly Productivity (Production / Area)</h5>
+            <div style="position:relative; height:320px;">
+              <canvas id="chart-productivity"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  {% include "_footer.html" %}
+  <script src="/static/dashboard.js"></script>
+  <script src="/static/crop_monitoring.js"></script>
+</body>
+
+</html>

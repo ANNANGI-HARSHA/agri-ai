@@ -1,0 +1,29 @@
+pincode,state,soil_type,N,P,K,ph
+110001,Delhi,Alluvial,55,40,45,7.0
+121001,Haryana,Alluvial,60,42,50,7.2
+133001,Punjab,Alluvial,62,45,52,7.1
+800001,Bihar,Alluvial,58,38,47,6.9
+700001,West Bengal,Alluvial,57,36,46,6.8
+400001,Maharashtra,Black,65,45,55,7.3
+380001,Gujarat,Black,62,44,53,7.4
+482001,Madhya Pradesh,Black,63,46,54,7.2
+500001,Telangana,Black,61,42,51,7.1
+600001,Tamil Nadu,Red,45,30,35,6.5
+522402,Andhra Pradesh,Red,47,32,36,6.6
+751001,Odisha,Red,48,34,37,6.5
+560001,Karnataka,Red,49,33,38,6.4
+673001,Kerala,Laterite,42,28,34,6.0
+575001,Karnataka,Laterite,44,29,36,6.2
+416001,Maharashtra,Laterite,43,27,35,6.1
+302001,Rajasthan,Desert,30,20,25,8.1
+341001,Rajasthan,Desert,32,22,28,8.3
+360001,Gujarat,Desert,33,23,29,8.2
+171001,Himachal Pradesh,Mountain,50,34,40,6.2
+263001,Uttarakhand,Mountain,52,36,42,6.3
+793001,Meghalaya,Mountain,48,32,38,5.8
+364001,Gujarat,Saline,28,18,22,8.5
+125001,Haryana,Saline,30,20,24,8.4
+313001,Rajasthan,Saline,29,19,23,8.6
+744101,Andaman & Nicobar,Peaty,40,26,32,5.5
+700091,West Bengal,Peaty,42,28,34,5.7
+689001,Kerala,Peaty,39,25,31,5.6

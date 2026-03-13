@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Precision Agriculture AI Dashboard – Home</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+
+<body class="bg-light">
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-success shadow-sm">
+    <div class="container">
+      <a class="navbar-brand fw-bold" href="/">Precision Agriculture AI Dashboard</a>
+      <button id="theme-toggle" class="btn btn-sm btn-outline-light ms-2" type="button">
+        🌙 Dark
+      </button>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsMain">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarsMain">
+        <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link active" href="/">Home</a></li>
+          <li class="nav-item"><a class="nav-link" href="/crop-recommendation">Crop Recommendation</a></li>
+          <li class="nav-item"><a class="nav-link" href="/disease-detection">Disease Detection</a></li>
+          <li class="nav-item"><a class="nav-link" href="/yield-dashboard">Yield Monitoring</a></li>
+          <li class="nav-item"><a class="nav-link" href="/crop-monitoring">Crop Monitoring</a></li>
+          <li class="nav-item"><a class="nav-link" href="/drone-monitoring">Drone Monitoring</a></li>
+          <li class="nav-item"><a class="nav-link" href="/about">About</a></li>
+          {% if farmer %}
+          <li class="nav-item"><a class="nav-link" href="/profile">{{ farmer.name }}</a></li>
+          <li class="nav-item"><a class="nav-link" href="/logout">Logout</a></li>
+          {% else %}
+          <li class="nav-item"><a class="nav-link" href="/login">Login</a></li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero-section text-white d-flex align-items-center">
+    <div class="container">
+      <div class="row align-items-center">
+        <div class="col-lg-7 text-center text-lg-start">
+          <h1 class="display-5 fw-semibold mb-3 text-uppercase" style="letter-spacing: 0.06em;">AI Agriculture Dashboard for Indian Farmers</h1>
+          <p class="lead mb-4">Monitor crops, detect diseases, track yields and get weather-based advice – all in one smart
+            platform.</p>
+          <div class="d-flex flex-wrap gap-2 justify-content-center justify-content-lg-start">
+            <a href="/crop-recommendation" class="btn btn-light text-success fw-semibold">Start with Crop
+              Advice</a>
+            <a href="/disease-detection" class="btn btn-outline-light fw-semibold">Scan Leaf Disease</a>
+            <a href="/yield-dashboard" class="btn btn-outline-light fw-semibold">View Yield Dashboard</a>
+          </div>
+        </div>
+        <div class="col-lg-5 mt-4 mt-lg-0">
+          <div class="hero-stats card border-0 shadow-lg">
+            <div class="card-body">
+              <h5 class="mb-3">Today&apos;s Farm Snapshot</h5>
+              <div class="row text-start small">
+                <div class="col-6 mb-2">
+                  <div class="stat-label">Recommended Crop</div>
+                  <div class="stat-value">Paddy / Maize</div>
+                </div>
+                <div class="col-6 mb-2">
+                  <div class="stat-label">Weather</div>
+                  <div class="stat-value">Warm, scattered rain</div>
+                </div>
+                <div class="col-6 mb-2">
+                  <div class="stat-label">Disease Risk</div>
+                  <div class="stat-value text-warning">Medium (fungal)</div>
+                </div>
+                <div class="col-6 mb-2">
+                  <div class="stat-label">Field Health</div>
+                  <div class="stat-value">Drone score: 82/100</div>
+                </div>
+              </div>
+              <p class="mt-3 mb-0 small text-muted">Use the chatbot for PIN-based weather and the Drone
+                Monitoring page for satellite view &amp; stress zones.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature cards -->
+  <section class="py-5 home-section">
+    <div class="container">
+      <h3 class="mb-4 text-center section-title">Everything a Farmer Needs in One Place</h3>
+      <div class="row g-4">
+        <div class="col-md-4">
+          <div class="card feature-card h-100 shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Crop Recommendation</h5>
+              <p class="card-text">AI and agronomy rules suggest crops for your village based on temperature, rainfall,
+                soil and season.</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card feature-card h-100 shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Disease Detection</h5>
+              <p class="card-text">Upload a leaf photo to detect diseases like Leaf Blight, Rust or Powdery Mildew and
+                get treatment guidance.</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card feature-card h-100 shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Weather &amp; Chatbot</h5>
+              <p class="card-text">Enter your PIN code in the Krishi Assistant to get real-time weather and simple
+                advice for irrigation and protection.</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card feature-card h-100 shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Drone &amp; Satellite View</h5>
+              <p class="card-text">Use drone images and satellite layers to see crop stress zones, water logging and
+                missing patches.</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card feature-card h-100 shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Yield Analytics</h5>
+              <p class="card-text">Follow season-wise production, profit and expenses to decide the best crop rotation
+                for your fields.</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card feature-card h-100 shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Schemes &amp; Inputs</h5>
+              <p class="card-text">Extend this dashboard with government scheme alerts, subsidy information and local
+                input prices.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer and global chatbot -->
+  <footer class="site-footer mt-5">
+    <div class="container">
+      <div class="row gy-3 align-items-start">
+        <div class="col-md-5">
+          <div class="footer-brand mb-2">Precision Agriculture AI Dashboard</div>
+          <p class="mb-2">Decision support for crops, diseases, yields and weather
+            in one farmer-friendly dashboard.</p>
+          <p class="mb-0 small text-muted">Built for Indian farming conditions with satellite, drone
+            and soil-data ready architecture.</p>
+        </div>
+        <div class="col-md-4">
+          <h6 class="mb-2">Platform</h6>
+          <ul class="list-unstyled mb-0 small">
+            <li><a href="/crop-recommendation">AI Crop Recommendation</a></li>
+            <li><a href="/disease-detection">Leaf Disease Detection</a></li>
+            <li><a href="/yield-dashboard">Yield Analytics</a></li>
+            <li><a href="/drone-monitoring">Drone &amp; Satellite View</a></li>
+          </ul>
+        </div>
+        <div class="col-md-3">
+          <h6 class="mb-2">Contact</h6>
+          <p class="mb-1 small">For demos and research projects, connect with your
+            agri university or innovation cell.</p>
+          <p class="mb-0 small text-muted">Prototype interface – not for real-time
+            agronomic decisions.</p>
+        </div>
+      </div>
+      <hr class="footer-divider" />
+      <div class="d-flex justify-content-between small flex-wrap gap-2">
+        <span>&copy; <span id="footer-year"></span> Precision Agriculture AI Dashboard (PAS). All rights reserved.</span>
+        <span>Designed as an AI-powered agriculture dashboard prototype.</span>
+      </div>
+    </div>
+  </footer>
+
+  {% include "_footer.html" %}
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/static/dashboard.js"></script>
+</body>
+
+</html>

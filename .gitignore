@@ -1,0 +1,25 @@
+# Python virtual environments
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local secrets
+.env
+
+# Local/generated databases
+*.db
+agriculture-ai-app/database/*.db
+
+# Large local datasets and notebooks not required for app runtime
+database.db/
+
+# Uploaded/generated files
+agriculture-ai-app/uploads/images/
+
+# IDE artifacts
+.vscode/
