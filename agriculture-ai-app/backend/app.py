@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -34,9 +35,11 @@ from drone_analysis import analyze_drone_image
 from weather_agent import get_weather_by_pincode, get_weather_by_coords, build_farming_suggestion
 
 
+BASE_DIR = Path(__file__).resolve().parents[1]
+# Load project-level .env first so API keys are available regardless of CWD.
+load_dotenv(BASE_DIR.parent / ".env")
 load_dotenv()
 
-BASE_DIR = Path(__file__).resolve().parents[1]
 DB_PATH = BASE_DIR / "database" / "agriculture.db"
 UPLOAD_DIR = BASE_DIR / "uploads" / "images"
 
@@ -238,6 +241,40 @@ def init_db():
         """
     )
 
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS CropRecommendations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            farmer_id INTEGER,
+            location TEXT,
+            pincode TEXT,
+            input_snapshot TEXT,
+            primary_crop TEXT,
+            recommendations TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY(farmer_id) REFERENCES Farmers(id)
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS RecommendationFeedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recommendation_id INTEGER NOT NULL,
+            crop_name TEXT NOT NULL,
+            feedback_status TEXT DEFAULT 'pending',
+            rating INTEGER,
+            comment TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(recommendation_id, crop_name),
+            FOREIGN KEY(recommendation_id) REFERENCES CropRecommendations(id)
+        )
+        """
+    )
+
     # Seed crop table with common Indian crops (if empty)
     cur.execute("SELECT COUNT(*) FROM Crops")
     if cur.fetchone()[0] == 0:
@@ -289,6 +326,112 @@ def login_required(view_func):  # type: ignore
         return view_func(*args, **kwargs)
 
     return wrapper
+
+
+def _active_farmer_id() -> int:
+    farmer_id = session.get("farmer_id")
+    try:
+        return int(farmer_id) if farmer_id is not None else 1
+    except (TypeError, ValueError):
+        return 1
+
+
+def _safe_float(value, default=0.0, decimals=2) -> float:
+    try:
+        return round(float(value), decimals)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _normalize_recommendation_input(data: dict) -> dict:
+    return {
+        "temperature": _safe_float(data.get("temperature", 0), 0, 2),
+        "humidity": _safe_float(data.get("humidity", 0), 0, 2),
+        "rainfall": _safe_float(data.get("rainfall", 0), 0, 2),
+        "ph": _safe_float(data.get("ph", 0), 0, 2),
+        "ec": _safe_float(data.get("ec", 0), 0, 2),
+        "carbon": _safe_float(data.get("carbon", 0), 0, 2),
+        "ca": _safe_float(data.get("ca", 0), 0, 2),
+        "mg": _safe_float(data.get("mg", 0), 0, 2),
+        "soil_type": str(data.get("soil_type", "loamy") or "loamy").strip(),
+        "location": str(data.get("location", "") or "").strip(),
+        "pincode": str(data.get("pincode", "") or "").strip(),
+        "area": _safe_float(data.get("area", 1), 1, 2),
+        "investment": _safe_float(data.get("investment", 0), 0, 2),
+    }
+
+
+def _normalize_crop_rows(crops) -> list:
+    normalized = []
+    for idx, crop in enumerate(crops or [], start=1):
+        economics = crop.get("economics", {}) if isinstance(crop.get("economics"), dict) else {}
+        plan_steps = [str(step).strip() for step in (crop.get("farming_plan") or []) if str(step).strip()]
+        normalized.append(
+            {
+                "rank": int(crop.get("rank", idx) or idx),
+                "crop_name": str(crop.get("crop_name", "Unknown") or "Unknown").strip(),
+                "is_primary": bool(crop.get("is_primary", False)),
+                "season": str(crop.get("season", "") or "").strip(),
+                "duration": str(crop.get("duration", "") or "").strip(),
+                "water_requirement": str(crop.get("water_requirement", "") or "").strip(),
+                "fertilizer_suggestion": str(crop.get("fertilizer_suggestion", "") or "").strip(),
+                "suitability_score": _safe_float(crop.get("suitability_score", 0), 0, 2),
+                "farming_plan": plan_steps,
+                "govt_schemes": crop.get("govt_schemes") or [],
+                "economics": {
+                    "estimated_cost": _safe_float(economics.get("estimated_cost", 0), 0, 2),
+                    "expected_yield_kg": _safe_float(economics.get("expected_yield_kg", 0), 0, 2),
+                    "msp_per_kg": _safe_float(economics.get("msp_per_kg", 0), 0, 2),
+                    "estimated_revenue": _safe_float(economics.get("estimated_revenue", 0), 0, 2),
+                    "estimated_profit": _safe_float(economics.get("estimated_profit", 0), 0, 2),
+                    "roi_percent": _safe_float(economics.get("roi_percent", 0), 0, 2),
+                },
+            }
+        )
+    return normalized
+
+
+def _store_recommendation(data: dict, result: dict) -> tuple[int, dict, list]:
+    normalized_input = _normalize_recommendation_input(data)
+    normalized_crops = _normalize_crop_rows(result.get("crops") or [])
+    primary = next((c["crop_name"] for c in normalized_crops if c.get("is_primary")), "")
+    if not primary and normalized_crops:
+        primary = normalized_crops[0]["crop_name"]
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO CropRecommendations
+        (farmer_id, location, pincode, input_snapshot, primary_crop, recommendations, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        """,
+        (
+            _active_farmer_id(),
+            normalized_input.get("location", ""),
+            normalized_input.get("pincode", ""),
+            json.dumps(normalized_input, ensure_ascii=True),
+            primary,
+            json.dumps(normalized_crops, ensure_ascii=True),
+        ),
+    )
+    recommendation_id = int(cur.lastrowid or 0)
+
+    for crop in normalized_crops:
+        cur.execute(
+            """
+            INSERT INTO RecommendationFeedback
+            (recommendation_id, crop_name, feedback_status, rating, comment, created_at, updated_at)
+            VALUES (?, ?, 'pending', NULL, '', datetime('now'), datetime('now'))
+            ON CONFLICT(recommendation_id, crop_name)
+            DO NOTHING
+            """,
+            (recommendation_id, crop.get("crop_name", "Unknown")),
+        )
+
+    conn.commit()
+    conn.close()
+    return recommendation_id, normalized_input, normalized_crops
 
 
 def send_otp_email(email: str, otp: str) -> None:
@@ -442,7 +585,36 @@ def api_crop_recommendation():
         area_hectares=area, investment=investment,
     )
 
+    recommendation_id, normalized_input, normalized_crops = _store_recommendation(data, result)
+    result["recommendation_id"] = recommendation_id
+    result["input_snapshot"] = normalized_input
+    result["crops"] = normalized_crops
+
     return jsonify(result)
+
+
+@app.route("/api/weather-by-pincode", methods=["POST"])
+def api_weather_by_pincode():
+    data = request.json or request.form or {}
+    pincode = str(data.get("pincode", "")).strip()
+
+    if not (pincode.isdigit() and len(pincode) == 6):
+        return jsonify({"error": "Please enter a valid 6-digit PIN code."}), 400
+
+    weather = get_weather_by_pincode(pincode)
+    if "error" in weather:
+        return jsonify({"error": weather["error"]}), 502
+
+    return jsonify(
+        {
+            "pincode": pincode,
+            "place_name": weather.get("place_name", ""),
+            "temperature": weather.get("temperature", 0),
+            "humidity": weather.get("humidity", 0),
+            "rainfall": weather.get("rain", 0),
+            "description": weather.get("description", ""),
+        }
+    )
 
 
 # ------------- API: Disease detection -------------
@@ -613,6 +785,149 @@ def field_growth(farmer_id):
     return jsonify(data)
 
 
+@app.route("/api/recommendation-dashboard")
+def api_recommendation_dashboard():
+    try:
+        limit = int(request.args.get("limit", 15))
+    except ValueError:
+        limit = 15
+    limit = max(1, min(limit, 100))
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, farmer_id, location, pincode, input_snapshot, primary_crop, recommendations, created_at, updated_at
+        FROM CropRecommendations
+        WHERE farmer_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (_active_farmer_id(), limit),
+    )
+    rec_rows = cur.fetchall()
+
+    items = []
+    for row in rec_rows:
+        rec_id = int(row["id"])
+        input_snapshot = json.loads(row["input_snapshot"] or "{}")
+        crops = json.loads(row["recommendations"] or "[]")
+
+        cur.execute(
+            """
+            SELECT crop_name, feedback_status, rating, comment, updated_at
+            FROM RecommendationFeedback
+            WHERE recommendation_id = ?
+            """,
+            (rec_id,),
+        )
+        feedback_rows = cur.fetchall()
+        feedback_map = {
+            fr["crop_name"]: {
+                "status": fr["feedback_status"] or "pending",
+                "rating": fr["rating"],
+                "comment": fr["comment"] or "",
+                "updated_at": fr["updated_at"],
+            }
+            for fr in feedback_rows
+        }
+
+        for crop in crops:
+            cname = str(crop.get("crop_name", "Unknown"))
+            crop["feedback"] = feedback_map.get(cname, {"status": "pending", "rating": None, "comment": "", "updated_at": None})
+
+        items.append(
+            {
+                "id": rec_id,
+                "farmer_id": row["farmer_id"],
+                "location": row["location"] or "",
+                "pincode": row["pincode"] or "",
+                "primary_crop": row["primary_crop"] or "",
+                "input_snapshot": input_snapshot,
+                "crops": crops,
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+        )
+
+    conn.close()
+    return jsonify({"items": items, "count": len(items), "synced_at": datetime.utcnow().isoformat(timespec="seconds")})
+
+
+@app.route("/api/recommendation-feedback", methods=["POST"])
+def api_recommendation_feedback():
+    data = request.json or request.form or {}
+    try:
+        recommendation_id = int(data.get("recommendation_id", 0))
+    except (TypeError, ValueError):
+        recommendation_id = 0
+
+    crop_name = str(data.get("crop_name", "") or "").strip()
+    status = str(data.get("feedback_status", "pending") or "pending").strip().lower()
+    comment = str(data.get("comment", "") or "").strip()[:500]
+
+    rating_raw = data.get("rating")
+    rating = None
+    if rating_raw not in (None, ""):
+        try:
+            rating = max(1, min(int(rating_raw), 5))
+        except (TypeError, ValueError):
+            rating = None
+
+    allowed_status = {"pending", "accepted", "trying", "not_suitable"}
+    if recommendation_id <= 0 or not crop_name:
+        return jsonify({"error": "recommendation_id and crop_name are required."}), 400
+    if status not in allowed_status:
+        return jsonify({"error": "Invalid feedback_status."}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM CropRecommendations WHERE id = ?", (recommendation_id,))
+    if not cur.fetchone():
+        conn.close()
+        return jsonify({"error": "Recommendation record not found."}), 404
+
+    cur.execute(
+        """
+        INSERT INTO RecommendationFeedback
+        (recommendation_id, crop_name, feedback_status, rating, comment, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        ON CONFLICT(recommendation_id, crop_name)
+        DO UPDATE SET
+            feedback_status = excluded.feedback_status,
+            rating = excluded.rating,
+            comment = excluded.comment,
+            updated_at = datetime('now')
+        """,
+        (recommendation_id, crop_name, status, rating, comment),
+    )
+
+    cur.execute(
+        """
+        UPDATE CropRecommendations
+        SET updated_at = datetime('now')
+        WHERE id = ?
+        """,
+        (recommendation_id,),
+    )
+
+    conn.commit()
+    conn.close()
+
+    return jsonify(
+        {
+            "message": "Feedback saved.",
+            "recommendation_id": recommendation_id,
+            "crop_name": crop_name,
+            "feedback": {
+                "status": status,
+                "rating": rating,
+                "comment": comment,
+            },
+        }
+    )
+
+
 # ------------- Auth & profile pages -------------
 
 
@@ -629,13 +944,9 @@ def signup():
         state = (form.get("state") or "").strip()
         pincode = (form.get("pincode") or "").strip()
         password = form.get("password") or ""
-        captcha_input = (form.get("captcha") or "").strip().upper()
-        expected_captcha = (session.get("captcha") or "").upper()
 
         if not name or not email or not password:
             flash("Name, email and password are required.", "danger")
-        elif captcha_input != expected_captcha:
-            flash("Captcha mismatch. Please try again.", "danger")
         else:
             conn = get_db_connection()
             cur = conn.cursor()
@@ -648,72 +959,24 @@ def signup():
             password_hash = generate_password_hash(password)
             cur.execute(
                 """
-                INSERT INTO Farmers (name, phone, email, village, district, state, pincode, password_hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO Farmers (name, phone, email, village, district, state, pincode, password_hash, is_verified)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (name, phone, email, village, district, state, pincode, password_hash),
-            )
-            farmer_id = cur.lastrowid
-
-            otp = generate_otp()
-            expires_at = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
-            cur.execute(
-                """
-                INSERT INTO EmailOtps (farmer_id, email, otp, expires_at)
-                VALUES (?, ?, ?, ?)
-                """,
-                (farmer_id, email, otp, expires_at),
+                (name, phone, email, village, district, state, pincode, password_hash, 1),
             )
             conn.commit()
             conn.close()
 
-            send_otp_email(email, otp)
-            flash("Signup successful. Please verify the OTP sent to your email.", "success")
-            return redirect(url_for("verify_otp", email=email))
+            flash("Signup successful. Please log in.", "success")
+            return redirect(url_for("login"))
 
-    captcha = generate_captcha()
-    session["captcha"] = captcha
-    return render_template("signup.html", captcha=captcha, farmer=get_current_farmer())
+    return render_template("signup.html", farmer=get_current_farmer())
 
 
 @app.route("/verify-otp", methods=["GET", "POST"])
 def verify_otp():
-    email = request.args.get("email") or (request.form.get("email") if request.method == "POST" else "")
-    if request.method == "POST":
-        otp_input = (request.form.get("otp") or "").strip()
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT id, farmer_id, otp, expires_at, used FROM EmailOtps
-            WHERE email = ? ORDER BY created_at DESC LIMIT 1
-            """,
-            (email,),
-        )
-        row = cur.fetchone()
-        if not row:
-            conn.close()
-            flash("No OTP found for this email.", "danger")
-        else:
-            otp_db = row[2]
-            expires_at = datetime.fromisoformat(row[3]) if row[3] else None
-            used = row[4]
-            if used:
-                flash("This OTP has already been used.", "danger")
-            elif expires_at and datetime.utcnow() > expires_at:
-                flash("OTP has expired. Please sign up again.", "danger")
-            elif otp_input != otp_db:
-                flash("Invalid OTP.", "danger")
-            else:
-                farmer_id = row[1]
-                cur.execute("UPDATE Farmers SET is_verified = 1 WHERE id = ?", (farmer_id,))
-                cur.execute("UPDATE EmailOtps SET used = 1 WHERE id = ?", (row[0],))
-                conn.commit()
-                conn.close()
-                flash("Email verified. You can now log in.", "success")
-                return redirect(url_for("login"))
-
-    return render_template("verify_otp.html", email=email, farmer=get_current_farmer())
+    flash("OTP verification is disabled. Please log in with email and password.", "info")
+    return redirect(url_for("login"))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -721,30 +984,20 @@ def login():
     if request.method == "POST":
         email = (request.form.get("email") or "").strip()
         password = request.form.get("password") or ""
-        captcha_input = (request.form.get("captcha") or "").strip().upper()
-        expected_captcha = (session.get("captcha") or "").upper()
-
-        if captcha_input != expected_captcha:
-            flash("Captcha mismatch. Please try again.", "danger")
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT id, password_hash FROM Farmers WHERE email = ?", (email,))
+        row = cur.fetchone()
+        conn.close()
+        if not row or not row[1] or not check_password_hash(row[1], password):
+            flash("Invalid email or password.", "danger")
         else:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT id, password_hash, is_verified FROM Farmers WHERE email = ?", (email,))
-            row = cur.fetchone()
-            conn.close()
-            if not row or not row[1] or not check_password_hash(row[1], password):
-                flash("Invalid email or password.", "danger")
-            elif not row[2]:
-                flash("Please verify your email via OTP before logging in.", "warning")
-            else:
-                session["farmer_id"] = row[0]
-                flash("Logged in successfully.", "success")
-                next_url = request.args.get("next") or url_for("home")
-                return redirect(next_url)
+            session["farmer_id"] = row[0]
+            flash("Logged in successfully.", "success")
+            next_url = request.args.get("next") or url_for("home")
+            return redirect(next_url)
 
-    captcha = generate_captcha()
-    session["captcha"] = captcha
-    return render_template("login.html", captcha=captcha, farmer=get_current_farmer())
+    return render_template("login.html", farmer=get_current_farmer())
 
 
 @app.route("/logout")

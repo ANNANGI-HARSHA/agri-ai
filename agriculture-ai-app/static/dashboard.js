@@ -179,6 +179,139 @@
   const form = document.getElementById("crop-form");
   if (!form) return;
 
+  const pincodeInput = document.getElementById("crop-pincode");
+  const fetchWeatherBtn = document.getElementById("fetch-weather-btn");
+  const weatherStatus = document.getElementById("weather-autofill-status");
+  const saveStatusEl = document.getElementById("crop-save-status");
+  const resultDiv = document.getElementById("crop-result");
+  const placeholder = document.getElementById("crop-placeholder");
+  const tempInput = form.querySelector("input[name='temperature']");
+  const humidityInput = form.querySelector("input[name='humidity']");
+  const rainfallInput = form.querySelector("input[name='rainfall']");
+
+  function feedbackLabel(status) {
+    if (status === "accepted") return "Accepted";
+    if (status === "trying") return "Trying This Crop";
+    if (status === "not_suitable") return "Not Suitable";
+    return "Pending";
+  }
+
+  if (resultDiv) {
+    resultDiv.addEventListener("click", async (event) => {
+      const btn = event.target.closest(".crop-feedback-save");
+      if (!btn) return;
+
+      const recommendationId = Number(btn.dataset.recommendationId || 0);
+      const cropName = String(btn.dataset.cropName || "");
+      const box = btn.closest(".crop-feedback-box");
+      if (!recommendationId || !cropName || !box) return;
+
+      const statusInput = box.querySelector(".crop-feedback-status");
+      const commentInput = box.querySelector(".crop-feedback-comment");
+      const ratingInput = box.querySelector(".crop-feedback-rating");
+      const msgEl = box.querySelector(".crop-feedback-message");
+
+      const feedbackStatus = statusInput ? statusInput.value : "pending";
+      const comment = commentInput ? commentInput.value : "";
+      const rating = ratingInput ? ratingInput.value : "";
+
+      btn.disabled = true;
+      if (msgEl) {
+        msgEl.textContent = "Saving feedback...";
+        msgEl.className = "crop-feedback-message text-muted";
+      }
+
+      try {
+        const res = await fetch("/api/recommendation-feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recommendation_id: recommendationId,
+            crop_name: cropName,
+            feedback_status: feedbackStatus,
+            rating,
+            comment,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Feedback save failed.");
+        }
+
+        if (msgEl) {
+          msgEl.textContent = `Saved: ${feedbackLabel(data.feedback?.status || feedbackStatus)}`;
+          msgEl.className = "crop-feedback-message text-success";
+        }
+      } catch (err) {
+        if (msgEl) {
+          msgEl.textContent = err.message || "Feedback save failed.";
+          msgEl.className = "crop-feedback-message text-danger";
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  if (pincodeInput) {
+    pincodeInput.addEventListener("input", () => {
+      pincodeInput.value = pincodeInput.value.replace(/\D/g, "").slice(0, 6);
+    });
+  }
+
+  if (fetchWeatherBtn && pincodeInput) {
+    fetchWeatherBtn.addEventListener("click", async () => {
+      const pincode = (pincodeInput.value || "").trim();
+      if (!(pincode.length === 6 && /^\d{6}$/.test(pincode))) {
+        if (weatherStatus) {
+          weatherStatus.textContent = "Enter a valid 6-digit PIN code.";
+          weatherStatus.className = "text-danger";
+        }
+        return;
+      }
+
+      fetchWeatherBtn.disabled = true;
+      const originalLabel = fetchWeatherBtn.textContent;
+      fetchWeatherBtn.textContent = "Fetching...";
+      if (weatherStatus) {
+        weatherStatus.textContent = "Getting weather from API...";
+        weatherStatus.className = "text-muted";
+      }
+
+      try {
+        const res = await fetch("/api/weather-by-pincode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pincode }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Unable to fetch weather for this PIN code.");
+        }
+
+        if (tempInput) tempInput.value = Number(data.temperature || 0).toFixed(1);
+        if (humidityInput) humidityInput.value = Number(data.humidity || 0).toFixed(1);
+        if (rainfallInput) rainfallInput.value = Number(data.rainfall || 0).toFixed(1);
+
+        if (weatherStatus) {
+          const place = data.place_name ? ` (${data.place_name})` : "";
+          weatherStatus.textContent = `Auto-filled from weather API${place}.`;
+          weatherStatus.className = "text-success";
+        }
+      } catch (err) {
+        if (weatherStatus) {
+          weatherStatus.textContent = err.message || "Failed to fetch weather.";
+          weatherStatus.className = "text-danger";
+        }
+      } finally {
+        fetchWeatherBtn.disabled = false;
+        fetchWeatherBtn.textContent = originalLabel || "Fetch Weather";
+      }
+    });
+  }
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
@@ -200,10 +333,18 @@
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-
-      const resultDiv = document.getElementById("crop-result");
-      const placeholder = document.getElementById("crop-placeholder");
       if (!resultDiv) return;
+
+      const recommendationId = Number(data.recommendation_id || 0);
+      if (saveStatusEl) {
+        if (recommendationId) {
+          saveStatusEl.textContent = `Saved to monitoring dashboard (Record #${recommendationId}).`;
+          saveStatusEl.className = "d-block mt-2 text-success";
+        } else {
+          saveStatusEl.textContent = "Recommendation generated but dashboard sync record ID missing.";
+          saveStatusEl.className = "d-block mt-2 text-warning";
+        }
+      }
 
       // Hide placeholder, show results
       if (placeholder) placeholder.classList.add("d-none");
@@ -255,6 +396,10 @@
 
         // Accordion ID
         const accId = `crop-detail-${idx}`;
+        const feedback = crop.feedback || {};
+        const fbStatus = feedback.status || "pending";
+        const fbComment = feedback.comment || "";
+        const fbRating = feedback.rating || "";
 
         html += `
         <div class="card-3d mb-4 p-0 overflow-hidden" style="${borderColor}">
@@ -330,6 +475,33 @@
             <div style="padding:1.5rem; background:linear-gradient(135deg, rgba(30,41,59,0.3), rgba(15,23,42,0.2));">
               <h5 style="font-weight:700; color:#22c55e; margin-bottom:1rem;">🏛️ Government Subsidies & Schemes</h5>
               ${schemesHTML}
+            </div>
+
+            <div style="padding:1.5rem; border-top:1px solid rgba(148,163,184,0.2);" class="crop-feedback-box">
+              <h5 style="font-weight:700; color:#0ea5e9; margin-bottom:1rem;">📝 Real-time Feedback</h5>
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label mb-1">Status</label>
+                  <select class="form-select form-select-sm crop-feedback-status">
+                    <option value="pending" ${fbStatus === "pending" ? "selected" : ""}>Pending</option>
+                    <option value="accepted" ${fbStatus === "accepted" ? "selected" : ""}>Accepted</option>
+                    <option value="trying" ${fbStatus === "trying" ? "selected" : ""}>Trying This Crop</option>
+                    <option value="not_suitable" ${fbStatus === "not_suitable" ? "selected" : ""}>Not Suitable</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label mb-1">Rating</label>
+                  <input type="number" min="1" max="5" class="form-control form-control-sm crop-feedback-rating" value="${fbRating}" placeholder="1-5" />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label mb-1">Comment</label>
+                  <input type="text" class="form-control form-control-sm crop-feedback-comment" value="${fbComment}" placeholder="Your feedback" />
+                </div>
+                <div class="col-md-2">
+                  <button type="button" class="btn btn-sm btn-outline-success w-100 crop-feedback-save" data-recommendation-id="${recommendationId}" data-crop-name="${crop.crop_name}">Save</button>
+                </div>
+              </div>
+              <small class="crop-feedback-message text-muted d-block mt-2">Feedback state: ${feedbackLabel(fbStatus)}</small>
             </div>
           </div>
         </div>`;
@@ -545,12 +717,98 @@
   const pieCtx = document.getElementById("crop-pie-chart");
   const form = document.getElementById("production-form");
   const messageEl = document.getElementById("production-message");
+  const recommendationListEl = document.getElementById("recommendation-monitor-list");
+  const recommendationSyncEl = document.getElementById("recommendation-sync-status");
 
   if ((!lineCtx || !barCtx || !pieCtx) && !form) return;
 
   let lineChart;
   let barChart;
   let pieChart;
+
+  function feedbackBadgeClass(status) {
+    if (status === "accepted") return "success";
+    if (status === "trying") return "primary";
+    if (status === "not_suitable") return "danger";
+    return "secondary";
+  }
+
+  function feedbackLabel(status) {
+    if (status === "accepted") return "Accepted";
+    if (status === "trying") return "Trying";
+    if (status === "not_suitable") return "Not Suitable";
+    return "Pending";
+  }
+
+  async function loadRecommendationMonitoring() {
+    if (!recommendationListEl) return;
+    try {
+      const res = await fetch("/api/recommendation-dashboard?limit=12");
+      const data = await res.json();
+      const items = data.items || [];
+
+      if (!items.length) {
+        recommendationListEl.innerHTML = '<div class="text-muted">No recommendation history available yet.</div>';
+        if (recommendationSyncEl) {
+          recommendationSyncEl.textContent = "Synced: no records yet";
+        }
+        return;
+      }
+
+      let html = "";
+      items.forEach((item) => {
+        const crops = item.crops || [];
+        const input = item.input_snapshot || {};
+
+        let cropBlocks = "";
+        crops.forEach((crop) => {
+          const feedback = crop.feedback || {};
+          const status = feedback.status || "pending";
+          const plan = crop.farming_plan || [];
+
+          let planHtml = "";
+          plan.forEach((step, i) => {
+            planHtml += `<li style="margin-bottom:4px;">${i + 1}. ${step}</li>`;
+          });
+
+          cropBlocks += `
+            <div class="border rounded p-2 mb-2" style="border-color: rgba(148,163,184,0.35) !important;">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div><strong>${crop.crop_name || "Unknown"}</strong> <span class="text-muted">(${crop.suitability_score || 0}% suitability)</span></div>
+                <span class="badge bg-${feedbackBadgeClass(status)}">${feedbackLabel(status)}</span>
+              </div>
+              <div class="small text-muted mt-1">Comment: ${feedback.comment || "-"}</div>
+              <div class="small text-muted mb-1">Rating: ${feedback.rating || "-"}</div>
+              <div class="small fw-semibold">Step-by-Step Farming Plan</div>
+              <ol class="small mb-0 ps-3">${planHtml || "<li>No steps provided.</li>"}</ol>
+            </div>`;
+        });
+
+        html += `
+          <div class="border rounded p-3" style="border-color: rgba(148,163,184,0.35) !important;">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+              <div>
+                <div><strong>Record #${item.id}</strong> - Primary Crop: <strong>${item.primary_crop || "-"}</strong></div>
+                <div class="small text-muted">Location: ${item.location || "-"} | PIN: ${item.pincode || "-"}</div>
+              </div>
+              <div class="small text-muted">${item.updated_at || item.created_at || ""}</div>
+            </div>
+            <div class="small mt-2 mb-2">Input: Temp ${input.temperature ?? "-"}C, Humidity ${input.humidity ?? "-"}%, Rainfall ${input.rainfall ?? "-"} mm, pH ${input.ph ?? "-"}</div>
+            ${cropBlocks}
+          </div>`;
+      });
+
+      recommendationListEl.innerHTML = html;
+      if (recommendationSyncEl) {
+        recommendationSyncEl.textContent = `Synced at ${new Date().toLocaleTimeString()}`;
+      }
+    } catch (err) {
+      console.error("Recommendation monitoring sync failed", err);
+      if (recommendationSyncEl) {
+        recommendationSyncEl.textContent = "Sync failed. Retrying...";
+      }
+    }
+  }
 
   async function loadYieldDashboard(farmerId = 1) {
     if (!lineCtx || !barCtx || !pieCtx || typeof Chart === "undefined") return;
@@ -659,6 +917,7 @@
         }
 
         await loadYieldDashboard(1);
+        await loadRecommendationMonitoring();
       } catch (e) {
         console.error(e);
       }
@@ -667,4 +926,8 @@
 
   // Initial load for farmer 1
   loadYieldDashboard(1);
+  loadRecommendationMonitoring();
+  if (recommendationListEl) {
+    setInterval(loadRecommendationMonitoring, 10000);
+  }
 })();

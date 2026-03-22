@@ -1,9 +1,20 @@
 import os
+from pathlib import Path
 from typing import Dict, Union
 
 import requests
+from dotenv import load_dotenv
 
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "YOUR_OPENWEATHER_API_KEY")
+# Load workspace-level .env regardless of execution CWD.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
+
+def _get_openweather_api_key() -> str:
+    return (
+        os.getenv("OPENWEATHER_API_KEY")
+        or os.getenv("WEATHER_API_KEY")
+        or "YOUR_OPENWEATHER_API_KEY"
+    )
 
 
 def get_weather_by_pincode(pincode: str) -> Dict[str, Union[float, str]]:
@@ -12,11 +23,12 @@ def get_weather_by_pincode(pincode: str) -> Dict[str, Union[float, str]]:
     Uses zip-based query: zip={pin},IN
     """
 
-    if not OPENWEATHER_API_KEY or OPENWEATHER_API_KEY == "YOUR_OPENWEATHER_API_KEY":
+    api_key = _get_openweather_api_key()
+    if not api_key or api_key == "YOUR_OPENWEATHER_API_KEY":
         return {"error": "OpenWeather API key not configured on server."}
 
     url = "https://api.openweathermap.org/data/2.5/weather"
-    params = {"zip": f"{pincode},IN", "appid": OPENWEATHER_API_KEY, "units": "metric"}
+    params = {"zip": f"{pincode},IN", "appid": api_key, "units": "metric"}
 
     try:
         resp = requests.get(url, params=params, timeout=10)
@@ -53,11 +65,12 @@ def get_weather_by_coords(lat: float, lon: float) -> Dict[str, Union[float, str]
     Used by the drone monitoring map when a user clicks on a field location.
     """
 
-    if not OPENWEATHER_API_KEY or OPENWEATHER_API_KEY == "YOUR_OPENWEATHER_API_KEY":
+    api_key = _get_openweather_api_key()
+    if not api_key or api_key == "YOUR_OPENWEATHER_API_KEY":
         return {"error": "OpenWeather API key not configured on server."}
 
     url = "https://api.openweathermap.org/data/2.5/weather"
-    params = {"lat": lat, "lon": lon, "appid": OPENWEATHER_API_KEY, "units": "metric"}
+    params = {"lat": lat, "lon": lon, "appid": api_key, "units": "metric"}
 
     try:
         resp = requests.get(url, params=params, timeout=10)

@@ -62,6 +62,14 @@
               <input type="number" step="0.1" class="form-control" name="rainfall" required />
             </div>
             <div class="col-6">
+              <label class="form-label">PIN Code</label>
+              <input type="text" class="form-control" name="pincode" id="crop-pincode" inputmode="numeric" maxlength="6" placeholder="e.g. 518301" />
+            </div>
+            <div class="col-12 d-flex align-items-end gap-2">
+              <button type="button" class="btn btn-outline-primary" id="fetch-weather-btn">Fetch Weather</button>
+              <small id="weather-autofill-status" class="text-muted"></small>
+            </div>
+            <div class="col-6">
               <label class="form-label">Soil pH</label>
               <input type="number" step="0.1" class="form-control" name="ph" />
             </div>
@@ -109,6 +117,7 @@
               <span class="spinner-border spinner-border-sm me-2"></span>Analyzing...
             </span>
           </button>
+          <small id="crop-save-status" class="d-block mt-2 text-muted"></small>
           </form>
         </div>
 
